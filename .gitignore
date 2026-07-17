@@ -1,0 +1,13 @@
+# Build and test output
+bin/
+obj/
+package/
+tests/bin/
+
+# Release archives belong on the GitHub Releases page
+*.zip
+
+# IDE and user-local files
+.vs/
+*.user
+*.suo
