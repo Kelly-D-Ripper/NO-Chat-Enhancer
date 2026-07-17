@@ -1,18 +1,20 @@
 # Nuclear Option Chat Enhancer
 
-A BepInEx 5 mod for Nuclear Option that adds a persistent, scrollable in-game message history and raises the player-chat message limit.
+A BepInEx 5 mod for Nuclear Option that replaces its message feeds with a persistent, scrollable chat UI and raises the player-chat message limit.
 
-Version 1.0.2 keeps the game chat input and allies toggle visible by moving the history window around the live input row when necessary. Version 1.0.1 added complete Sarcastic Kill Feed announcements instead of shortening them to 128 characters.
+Version 1.1.2 replaces both native message feeds. New chat, server, gameplay, and combat-kill messages appear in one compact feed for six seconds before fading. Opening chat shows the complete scrollable history directly below the native chat-control bar while preserving the game's complete chat hierarchy, text input, send button, and allies toggle.
 
 ## Features
 
-- Keeps up to 500 chat, server, and gameplay messages locally by default.
-- Opens a scrollable history panel whenever the normal chat input is open.
+- Replaces both the stock general-message feed and stock combat kill feed.
+- Shows no more than six wrapped lines while chat is closed; messages remain fully visible for six seconds and then fade.
+- Keeps up to 500 chat, server, gameplay, and combat-kill messages locally by default.
+- Opens the complete scrollable history whenever the normal chat input is open.
 - Supports mouse-wheel scrolling plus Page Up, Page Down, Home, and End.
 - Raises player messages from 128 to 1024 characters by default.
 - Detects NuclearOptionStatsBridge on a server and stops splitting stats responses every 128 characters.
 - Detects SarcasticKillFeed on a server and stops shortening kill announcements every 128 characters.
-- Preserves the normal compact/expiring game feed while chat is closed.
+- Preserves the complete native chat-control hierarchy while hiding both stock feed text renderers.
 
 ## Installation
 
@@ -47,6 +49,11 @@ WindowHeight = 420
 FontSize = 16
 ClearOnSceneChange = true
 
+[CompactFeed]
+MaximumLines = 6
+VisibleSeconds = 6
+FadeSeconds = 1
+
 [LongMessages]
 EnablePlayerMessages = true
 MaximumLength = 1024
@@ -58,4 +65,4 @@ If only client-side history is wanted on public/unmodded servers, set `EnablePla
 
 ## Compatibility
 
-Built for the current Nuclear Option Mono/BepInEx 5 release. The mod patches the game's `ChatManager`, `ChatBox`, and `MessageUI` at runtime and does not replace game files.
+Built for the current Nuclear Option Mono/BepInEx 5 release. The mod patches the game's `ChatManager`, `ChatBox`, and `MessageUI` at runtime and does not replace game files. Disabling `History.Enabled` restores the native feeds.

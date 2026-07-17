@@ -34,6 +34,8 @@ internal static class HarmonySmokeTest
         {
             { AccessTools.Method(AccessTools.TypeByName("MessageUI"), "Awake"), "history UI attachment" },
             { AccessTools.Method(AccessTools.TypeByName("MessageUI"), "GameMessage", new[] { typeof(string) }), "history capture" },
+            { AccessTools.Method(AccessTools.TypeByName("MessageUI"), "KillFeed", new[] { typeof(string) }), "combat-feed capture" },
+            { AccessTools.Method(AccessTools.TypeByName("MessageUI"), "LateUpdate"), "native-feed suppression" },
             { AccessTools.Method(AccessTools.TypeByName("ChatBox"), "Awake"), "input limit" },
             { AccessTools.Method(AccessTools.TypeByName("NuclearOption.Chat.ChatManager"), "ValidateChatMessageSize"), "message validation" },
             { AccessTools.Method(AccessTools.TypeByName("NuclearOption.Chat.ChatManager"), "CmdSendChatMessage"), "client serialization" },
