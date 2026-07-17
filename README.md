@@ -2,6 +2,8 @@
 
 A BepInEx 5 mod for Nuclear Option that adds a persistent, scrollable in-game message history and raises the player-chat message limit.
 
+Version 1.0.1 keeps the history window within a responsive portion of the screen, prevents the kill feed showing through it, and hides the scrollbar until the retained history actually overflows the window.
+
 ## Features
 
 - Keeps up to 500 chat, server, and gameplay messages locally by default.
