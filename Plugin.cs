@@ -16,7 +16,7 @@ namespace NuclearOptionChatEnhancer
     {
         public const string PluginGuid = "com.kellydripper.nuclearoption.chatenhancer";
         public const string PluginName = "NuclearOptionChatEnhancer";
-        public const string PluginVersion = "1.0.1";
+        public const string PluginVersion = "1.0.2";
         private const int VanillaChatLimit = 128;
 
         private static readonly FieldInfo MessageTextField = AccessTools.Field(typeof(MessageUI), "messageText");
@@ -39,6 +39,7 @@ namespace NuclearOptionChatEnhancer
         private Harmony _harmony;
         private TextMeshProUGUI _messageText;
         private ChatBox _chatBox;
+        private TMP_InputField _chatInput;
         private bool _chatWasOpen;
         private bool _messageTextSuppressed;
         private bool _messageTextWasEnabled;
@@ -109,6 +110,7 @@ namespace NuclearOptionChatEnhancer
             SuppressOriginalText(false);
             _messageText = MessageTextField == null ? null : MessageTextField.GetValue(messageUi) as TextMeshProUGUI;
             _chatBox = ChatField == null ? null : ChatField.GetValue(messageUi) as ChatBox;
+            _chatInput = GetChatInput(_chatBox);
             ApplyInputLimit(_chatBox);
 
             if (ClearHistoryOnSceneChange.Value)
@@ -123,13 +125,18 @@ namespace NuclearOptionChatEnhancer
         internal void Attach(ChatBox chatBox)
         {
             _chatBox = chatBox;
+            _chatInput = GetChatInput(chatBox);
             ApplyInputLimit(chatBox);
+        }
+
+        private static TMP_InputField GetChatInput(ChatBox chatBox)
+        {
+            return chatBox == null || ChatInputField == null ? null : ChatInputField.GetValue(chatBox) as TMP_InputField;
         }
 
         private static void ApplyInputLimit(ChatBox chatBox)
         {
-            if (chatBox == null || ChatInputField == null) return;
-            TMP_InputField input = ChatInputField.GetValue(chatBox) as TMP_InputField;
+            TMP_InputField input = GetChatInput(chatBox);
             if (input != null) input.characterLimit = EnableLongPlayerMessages.Value ? EffectiveMessageLimit : VanillaChatLimit;
         }
 
@@ -269,34 +276,61 @@ namespace NuclearOptionChatEnhancer
             float x = 18f * scale;
             float bottom = Screen.height - 110f * scale;
 
-            RectTransform rectTransform = _messageText == null ? null : _messageText.rectTransform;
-            if (rectTransform != null)
+            Rect messageRect;
+            if (_messageText != null && TryGetGuiRect(_messageText.rectTransform, out messageRect))
             {
-                Vector3[] corners = new Vector3[4];
-                rectTransform.GetWorldCorners(corners);
-                Canvas canvas = rectTransform.GetComponentInParent<Canvas>();
-                Camera camera = canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
-                Vector2 first = RectTransformUtility.WorldToScreenPoint(camera, corners[0]);
-                float minX = first.x;
-                float maxX = first.x;
-                float minY = first.y;
-                for (int i = 1; i < corners.Length; i++)
-                {
-                    Vector2 point = RectTransformUtility.WorldToScreenPoint(camera, corners[i]);
-                    minX = Mathf.Min(minX, point.x);
-                    maxX = Mathf.Max(maxX, point.x);
-                    minY = Mathf.Min(minY, point.y);
-                }
-                if (maxX - minX > 100f) width = Mathf.Max(width, maxX - minX);
-                x = minX;
-                bottom = Screen.height - minY + 4f * scale;
+                if (messageRect.width > 100f) width = Mathf.Max(width, messageRect.width);
+                x = messageRect.xMin;
+                bottom = messageRect.yMax + 4f * scale;
             }
 
             width = Mathf.Min(width, Screen.width - 20f * scale);
             height = Mathf.Min(height, Screen.height - 30f * scale);
             x = Mathf.Clamp(x, 10f * scale, Screen.width - width - 10f * scale);
             float y = Mathf.Clamp(bottom - height, 10f * scale, Screen.height - height - 10f * scale);
-            return new Rect(x, y, width, height);
+            Rect panel = new Rect(x, y, width, height);
+
+            Rect inputRect;
+            if (_chatInput != null && TryGetGuiRect(_chatInput.GetComponent<RectTransform>(), out inputRect) && panel.Overlaps(inputRect))
+            {
+                float margin = 6f * scale;
+                float belowInput = inputRect.yMax + margin;
+                float aboveInput = inputRect.yMin - height - margin;
+                if (belowInput + height <= Screen.height - 10f * scale)
+                    panel.y = belowInput;
+                else if (aboveInput >= 10f * scale)
+                    panel.y = aboveInput;
+            }
+
+            return panel;
+        }
+
+        private static bool TryGetGuiRect(RectTransform rectTransform, out Rect guiRect)
+        {
+            guiRect = default(Rect);
+            if (rectTransform == null) return false;
+
+            Vector3[] corners = new Vector3[4];
+            rectTransform.GetWorldCorners(corners);
+            Canvas canvas = rectTransform.GetComponentInParent<Canvas>();
+            Camera camera = canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+            Vector2 first = RectTransformUtility.WorldToScreenPoint(camera, corners[0]);
+            float minX = first.x;
+            float maxX = first.x;
+            float minY = first.y;
+            float maxY = first.y;
+            for (int i = 1; i < corners.Length; i++)
+            {
+                Vector2 point = RectTransformUtility.WorldToScreenPoint(camera, corners[i]);
+                minX = Mathf.Min(minX, point.x);
+                maxX = Mathf.Max(maxX, point.x);
+                minY = Mathf.Min(minY, point.y);
+                maxY = Mathf.Max(maxY, point.y);
+            }
+
+            if (maxX - minX <= 1f || maxY - minY <= 1f) return false;
+            guiRect = new Rect(minX, Screen.height - maxY, maxX - minX, maxY - minY);
+            return true;
         }
 
         private void TryPatchStatsBridge()
