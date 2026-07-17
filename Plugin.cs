@@ -34,6 +34,7 @@ namespace NuclearOptionChatEnhancer
         internal static ConfigEntry<bool> EnableLongPlayerMessages;
         internal static ConfigEntry<int> MaximumMessageLength;
         internal static ConfigEntry<bool> ExpandStatsBridgeMessages;
+        internal static ConfigEntry<bool> ExpandKillFeedAnnouncements;
 
         private readonly List<string> _history = new List<string>();
         private Harmony _harmony;
@@ -69,6 +70,7 @@ namespace NuclearOptionChatEnhancer
             _harmony = new Harmony(PluginGuid);
             _harmony.PatchAll(typeof(Plugin).Assembly);
             TryPatchStatsBridge();
+            TryPatchSarcasticKillFeed();
 
             Logger.LogInfo(PluginName + " " + PluginVersion + " loaded. History: " + EnableHistory.Value
                 + ", player message limit: " + (EnableLongPlayerMessages.Value ? EffectiveMessageLimit.ToString() : VanillaChatLimit.ToString()) + ".");
@@ -95,6 +97,8 @@ namespace NuclearOptionChatEnhancer
                 "Maximum player chat and expanded stats-response length (128-4096).");
             ExpandStatsBridgeMessages = Config.Bind("LongMessages", "ExpandStatsBridgeResponses", true,
                 "When NuclearOptionStatsBridge is installed on the server, stop splitting its responses every 128 characters.");
+            ExpandKillFeedAnnouncements = Config.Bind("LongMessages", "ExpandKillFeedAnnouncements", true,
+                "When SarcasticKillFeed is installed on the server, stop shortening its kill announcements to 128 characters.");
         }
 
         private void OnDestroy()
@@ -319,6 +323,22 @@ namespace NuclearOptionChatEnhancer
             MethodInfo transpiler = AccessTools.Method(typeof(Plugin), nameof(ReplaceVanillaLimit));
             _harmony.Patch(broadcast, transpiler: new HarmonyMethod(transpiler));
             Logger.LogInfo("NuclearOptionStatsBridge responses expanded to " + EffectiveMessageLimit + " characters per message.");
+        }
+
+        private void TryPatchSarcasticKillFeed()
+        {
+            if (!ExpandKillFeedAnnouncements.Value) return;
+            Type killFeedType = AccessTools.TypeByName("SarcasticKillFeed.Plugin");
+            MethodInfo broadcast = killFeedType == null ? null : AccessTools.Method(killFeedType, "Broadcast", new[] { typeof(string) });
+            if (broadcast == null)
+            {
+                Logger.LogInfo("SarcasticKillFeed was not found; its optional announcement expansion patch was skipped.");
+                return;
+            }
+
+            MethodInfo transpiler = AccessTools.Method(typeof(Plugin), nameof(ReplaceVanillaLimit));
+            _harmony.Patch(broadcast, transpiler: new HarmonyMethod(transpiler));
+            Logger.LogInfo("SarcasticKillFeed announcements expanded to " + EffectiveMessageLimit + " characters per message.");
         }
 
         private static IEnumerable<CodeInstruction> ReplaceVanillaLimit(IEnumerable<CodeInstruction> instructions)

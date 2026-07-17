@@ -2,7 +2,7 @@
 
 A BepInEx 5 mod for Nuclear Option that adds a persistent, scrollable in-game message history and raises the player-chat message limit.
 
-Version 1.0.1 keeps the history window within a responsive portion of the screen, prevents the kill feed showing through it, and hides the scrollbar until the retained history actually overflows the window.
+Version 1.0.1 keeps the history window within a responsive portion of the screen, prevents the kill feed showing through it, hides the scrollbar until the retained history actually overflows the window, and allows the server to send complete Sarcastic Kill Feed announcements instead of shortening them to 128 characters.
 
 ## Features
 
@@ -11,6 +11,7 @@ Version 1.0.1 keeps the history window within a responsive portion of the screen
 - Supports mouse-wheel scrolling plus Page Up, Page Down, Home, and End.
 - Raises player messages from 128 to 1024 characters by default.
 - Detects NuclearOptionStatsBridge on a server and stops splitting stats responses every 128 characters.
+- Detects SarcasticKillFeed on a server and stops shortening kill announcements every 128 characters.
 - Preserves the normal compact/expiring game feed while chat is closed.
 
 ## Installation
@@ -25,7 +26,7 @@ For scrolling/history only, install it on each client that wants the feature.
 
 For player-written messages longer than 128 characters, install the same DLL on the dedicated server and on every client that will send or receive long player chat. All installations must use the same `MaximumLength`. A client using the extended protocol against an unmodded server can be rejected by the server's original 128-character reader.
 
-To combine long, unsplit `!stats`, `!top`, `!weapons`, and `!rivals` responses with scrolling, install this mod beside NuclearOptionStatsBridge on the server and install it on the viewing clients. Server announcements use the game's existing unrestricted server-message RPC, so vanilla clients can still connect; only enhanced clients get the history window.
+To combine long, unsplit `!stats`, `!top`, `!weapons`, and `!rivals` responses or complete Sarcastic Kill Feed announcements with scrolling, install this mod beside the server plugins and install it on the viewing clients. Server announcements use the game's existing unrestricted server-message RPC, so vanilla clients can still connect; only enhanced clients get the history window.
 
 ## Configuration
 
@@ -50,6 +51,7 @@ ClearOnSceneChange = true
 EnablePlayerMessages = true
 MaximumLength = 1024
 ExpandStatsBridgeResponses = true
+ExpandKillFeedAnnouncements = true
 ```
 
 If only client-side history is wanted on public/unmodded servers, set `EnablePlayerMessages = false`. The history and scrolling features continue to work.
