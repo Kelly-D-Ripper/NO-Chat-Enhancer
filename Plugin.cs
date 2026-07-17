@@ -20,7 +20,6 @@ namespace NuclearOptionChatEnhancer
         private const int VanillaChatLimit = 128;
 
         private static readonly FieldInfo MessageTextField = AccessTools.Field(typeof(MessageUI), "messageText");
-        private static readonly FieldInfo KillFeedTextField = AccessTools.Field(typeof(MessageUI), "killFeedText");
         private static readonly FieldInfo ChatField = AccessTools.Field(typeof(MessageUI), "chat");
         private static readonly FieldInfo ChatInputField = AccessTools.Field(typeof(ChatBox), "input");
 
@@ -39,13 +38,10 @@ namespace NuclearOptionChatEnhancer
         private readonly List<string> _history = new List<string>();
         private Harmony _harmony;
         private TextMeshProUGUI _messageText;
-        private TextMeshProUGUI _killFeedText;
         private ChatBox _chatBox;
         private bool _chatWasOpen;
         private bool _messageTextSuppressed;
         private bool _messageTextWasEnabled;
-        private bool _killFeedTextSuppressed;
-        private bool _killFeedTextWasEnabled;
         private Vector2 _scrollPosition;
         private float _lastMaximumScroll;
         private bool _scrollToBottom = true;
@@ -103,16 +99,15 @@ namespace NuclearOptionChatEnhancer
 
         private void OnDestroy()
         {
-            SuppressOriginalFeeds(false);
+            SuppressOriginalText(false);
             if (_harmony != null) _harmony.UnpatchSelf();
             if (ReferenceEquals(Instance, this)) Instance = null;
         }
 
         internal void Attach(MessageUI messageUi)
         {
-            SuppressOriginalFeeds(false);
+            SuppressOriginalText(false);
             _messageText = MessageTextField == null ? null : MessageTextField.GetValue(messageUi) as TextMeshProUGUI;
-            _killFeedText = KillFeedTextField == null ? null : KillFeedTextField.GetValue(messageUi) as TextMeshProUGUI;
             _chatBox = ChatField == null ? null : ChatField.GetValue(messageUi) as ChatBox;
             ApplyInputLimit(_chatBox);
 
@@ -165,7 +160,7 @@ namespace NuclearOptionChatEnhancer
                 if (Input.GetKeyDown(KeyCode.End)) _scrollToBottom = true;
             }
 
-            SuppressOriginalFeeds(chatOpen && EnableHistory.Value);
+            SuppressOriginalText(chatOpen && EnableHistory.Value);
             _chatWasOpen = chatOpen;
         }
 
@@ -174,25 +169,19 @@ namespace NuclearOptionChatEnhancer
             return _chatBox != null && _chatBox.gameObject != null && _chatBox.gameObject.activeInHierarchy;
         }
 
-        private void SuppressOriginalFeeds(bool suppress)
+        private void SuppressOriginalText(bool suppress)
         {
-            SetTextSuppressed(_messageText, suppress, ref _messageTextSuppressed, ref _messageTextWasEnabled);
-            SetTextSuppressed(_killFeedText, suppress, ref _killFeedTextSuppressed, ref _killFeedTextWasEnabled);
-        }
-
-        private static void SetTextSuppressed(TextMeshProUGUI text, bool suppress, ref bool isSuppressed, ref bool wasEnabled)
-        {
-            if (text == null) { isSuppressed = false; return; }
-            if (suppress && !isSuppressed)
+            if (_messageText == null) { _messageTextSuppressed = false; return; }
+            if (suppress && !_messageTextSuppressed)
             {
-                wasEnabled = text.enabled;
-                text.enabled = false;
-                isSuppressed = true;
+                _messageTextWasEnabled = _messageText.enabled;
+                _messageText.enabled = false;
+                _messageTextSuppressed = true;
             }
-            else if (!suppress && isSuppressed)
+            else if (!suppress && _messageTextSuppressed)
             {
-                text.enabled = wasEnabled;
-                isSuppressed = false;
+                _messageText.enabled = _messageTextWasEnabled;
+                _messageTextSuppressed = false;
             }
         }
 
@@ -203,8 +192,7 @@ namespace NuclearOptionChatEnhancer
 
         private float CurrentHistoryHeight()
         {
-            float configured = Mathf.Clamp(HistoryHeight.Value, 200, 900) * CurrentScale();
-            return Mathf.Min(configured, Screen.height * 0.52f);
+            return Mathf.Clamp(HistoryHeight.Value, 200, 900) * CurrentScale();
         }
 
         private void OnGUI()
@@ -219,7 +207,7 @@ namespace NuclearOptionChatEnhancer
             Rect viewport = new Rect(panel.x + 7f * scale, panel.y + headerHeight, panel.width - 14f * scale, panel.height - headerHeight - 7f * scale);
 
             Color oldColor = GUI.color;
-            GUI.color = new Color(0.025f, 0.035f, 0.045f, 0.985f);
+            GUI.color = new Color(0.025f, 0.035f, 0.045f, 0.94f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
             GUI.color = oldColor;
             GUI.Label(header, "MESSAGE HISTORY  (mouse wheel / PgUp / PgDn / Home / End)", _headerStyle);
@@ -242,7 +230,7 @@ namespace NuclearOptionChatEnhancer
             }
 
             Rect content = new Rect(0f, 0f, contentWidth, contentHeight);
-            _scrollPosition = GUI.BeginScrollView(viewport, _scrollPosition, content, false, false);
+            _scrollPosition = GUI.BeginScrollView(viewport, _scrollPosition, content, false, true);
             float y = 1f * scale;
             for (int i = 0; i < _history.Count; i++)
             {
@@ -276,8 +264,7 @@ namespace NuclearOptionChatEnhancer
 
         private Rect GetPanelRect(float scale)
         {
-            float configuredWidth = Mathf.Clamp(HistoryWidth.Value, 400, 1600) * scale;
-            float width = Mathf.Min(configuredWidth, Screen.width * 0.65f);
+            float width = Mathf.Clamp(HistoryWidth.Value, 400, 1600) * scale;
             float height = CurrentHistoryHeight();
             float x = 18f * scale;
             float bottom = Screen.height - 110f * scale;
@@ -291,13 +278,16 @@ namespace NuclearOptionChatEnhancer
                 Camera camera = canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
                 Vector2 first = RectTransformUtility.WorldToScreenPoint(camera, corners[0]);
                 float minX = first.x;
+                float maxX = first.x;
                 float minY = first.y;
                 for (int i = 1; i < corners.Length; i++)
                 {
                     Vector2 point = RectTransformUtility.WorldToScreenPoint(camera, corners[i]);
                     minX = Mathf.Min(minX, point.x);
+                    maxX = Mathf.Max(maxX, point.x);
                     minY = Mathf.Min(minY, point.y);
                 }
+                if (maxX - minX > 100f) width = Mathf.Max(width, maxX - minX);
                 x = minX;
                 bottom = Screen.height - minY + 4f * scale;
             }

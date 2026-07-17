@@ -2,7 +2,7 @@
 
 A BepInEx 5 mod for Nuclear Option that adds a persistent, scrollable in-game message history and raises the player-chat message limit.
 
-Version 1.0.1 keeps the history window within a responsive portion of the screen, prevents the kill feed showing through it, hides the scrollbar until the retained history actually overflows the window, and allows the server to send complete Sarcastic Kill Feed announcements instead of shortening them to 128 characters.
+Version 1.0.1 allows the server to send complete Sarcastic Kill Feed announcements instead of shortening them to 128 characters.
 
 ## Features
 
