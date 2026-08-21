@@ -2,7 +2,7 @@
 
 A BepInEx 5 mod for Nuclear Option that replaces its message feeds with a persistent, scrollable chat UI and raises the player-chat message limit.
 
-Version 1.1.2 replaces both native message feeds. New chat, server, gameplay, and combat-kill messages appear in one compact feed for six seconds before fading. Opening chat shows the complete scrollable history directly below the native chat-control bar while preserving the game's complete chat hierarchy, text input, send button, and allies toggle.
+Version 1.1.5 replaces both native message feeds. New chat, server, gameplay, and combat-kill messages appear in one compact six-line feed near the top-left for six seconds before fading. Opening chat shows the complete scrollable history aligned directly below the native chat-control bar while preserving the game's text input, send button, and allies toggle. The configured history width is now retained when a mission reports unusually narrow native chat-control bounds.
 
 ## Features
 
@@ -10,10 +10,11 @@ Version 1.1.2 replaces both native message feeds. New chat, server, gameplay, an
 - Shows no more than six wrapped lines while chat is closed; messages remain fully visible for six seconds and then fade.
 - Keeps up to 500 chat, server, gameplay, and combat-kill messages locally by default.
 - Opens the complete scrollable history whenever the normal chat input is open.
+- Keeps the configured history width as a minimum instead of shrinking to narrow mission-specific chat controls.
 - Supports mouse-wheel scrolling plus Page Up, Page Down, Home, and End.
 - Raises player messages from 128 to 1024 characters by default.
-- Detects NuclearOptionStatsBridge on a server and stops splitting stats responses every 128 characters.
-- Detects SarcasticKillFeed on a server and stops shortening kill announcements every 128 characters.
+- Detects Kelly's RIPPER Control Bridge on a server and expands its public broadcasts, targeted replies, warnings, and Discord-to-player messages.
+- Detects Kelly's KIA on a server and stops shortening kill announcements every 128 characters.
 - Preserves the complete native chat-control hierarchy while hiding both stock feed text renderers.
 
 ## Installation
@@ -28,7 +29,9 @@ For scrolling/history only, install it on each client that wants the feature.
 
 For player-written messages longer than 128 characters, install the same DLL on the dedicated server and on every client that will send or receive long player chat. All installations must use the same `MaximumLength`. A client using the extended protocol against an unmodded server can be rejected by the server's original 128-character reader.
 
-To combine long, unsplit `!stats`, `!top`, `!weapons`, and `!rivals` responses or complete Sarcastic Kill Feed announcements with scrolling, install this mod beside the server plugins and install it on the viewing clients. Server announcements use the game's existing unrestricted server-message RPC, so vanilla clients can still connect; only enhanced clients get the history window.
+To combine complete RIPPER broadcasts, private replies, staff warnings, Discord-to-player messages, or Kelly's KIA announcements with scrolling, install this mod beside the server plugins and on each viewing client. RIPPER statistics commands now direct players to Kelly's RIPPER Discord Bot; Chat Enhancer handles the bridge's remaining in-game messages.
+
+RIPPER and KIA announcements use the game's server-message RPC, so players without Chat Enhancer can still connect and see the stock feed. The custom six-line feed and scrollable history are client features. Extended player-written chat is different: if `EnablePlayerMessages` is enabled, the same Chat Enhancer version and `MaximumLength` must be installed on the dedicated server and every participating client.
 
 ## Configuration
 

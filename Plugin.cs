@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace NuclearOptionChatEnhancer
 {
@@ -16,13 +17,15 @@ namespace NuclearOptionChatEnhancer
     {
         public const string PluginGuid = "com.kellydripper.nuclearoption.chatenhancer";
         public const string PluginName = "NuclearOptionChatEnhancer";
-        public const string PluginVersion = "1.1.2";
+        public const string PluginVersion = "1.1.5";
         private const int VanillaChatLimit = 128;
 
         private static readonly FieldInfo MessageTextField = AccessTools.Field(typeof(MessageUI), "messageText");
         private static readonly FieldInfo KillFeedTextField = AccessTools.Field(typeof(MessageUI), "killFeedText");
         private static readonly FieldInfo ChatField = AccessTools.Field(typeof(MessageUI), "chat");
         private static readonly FieldInfo ChatInputField = AccessTools.Field(typeof(ChatBox), "input");
+        private static readonly FieldInfo ChatSendButtonField = AccessTools.Field(typeof(ChatBox), "sendButton");
+        private static readonly FieldInfo ChatAlliesToggleField = AccessTools.Field(typeof(ChatBox), "alliesOnlyToggle");
 
         internal static Plugin Instance;
         internal static ConfigEntry<bool> EnableHistory;
@@ -119,9 +122,9 @@ namespace NuclearOptionChatEnhancer
             MaximumMessageLength = Config.Bind("LongMessages", "MaximumLength", 1024,
                 "Maximum player chat and expanded stats-response length (128-4096).");
             ExpandStatsBridgeMessages = Config.Bind("LongMessages", "ExpandStatsBridgeResponses", true,
-                "When NuclearOptionStatsBridge is installed on the server, stop splitting its responses every 128 characters.");
+                "When Kelly's RIPPER Control Bridge is installed on the server, stop splitting its responses every 128 characters.");
             ExpandKillFeedAnnouncements = Config.Bind("LongMessages", "ExpandKillFeedAnnouncements", true,
-                "When SarcasticKillFeed is installed on the server, stop shortening its kill announcements to 128 characters.");
+                "When Kelly's KIA is installed on the server, stop shortening its kill announcements to 128 characters.");
         }
 
         private void OnDestroy()
@@ -327,19 +330,22 @@ namespace NuclearOptionChatEnhancer
             while (newestActive >= 0 && now - _history[newestActive].AddedAt > visibleSeconds + fadeSeconds) newestActive--;
             if (newestActive < 0) return;
 
-            Rect anchor;
-            if (_messageText == null || !TryGetGuiRect(_messageText.rectTransform, out anchor))
-                anchor = new Rect(18f * scale, 18f * scale, Mathf.Min(760f * scale, Screen.width * 0.55f), 180f * scale);
-
-            float width = Mathf.Clamp(anchor.width, 320f * scale, Mathf.Min(900f * scale, Screen.width - 20f * scale));
-            float x = Mathf.Clamp(anchor.xMin, 10f * scale, Screen.width - width - 10f * scale);
-            float lineHeight = Mathf.Max(_messageStyle.lineHeight, _styleFontSize + 2f);
-            float maximumHeight = lineHeight * Mathf.Clamp(CompactMaximumLines.Value, 1, 12);
+            Rect controlsRect;
+            bool haveControls = TryGetChatControlsRect(scale, out controlsRect);
+            float x = haveControls ? controlsRect.xMin : 10f * scale;
+            float edgeMargin = haveControls ? 0f : 10f * scale;
+            float width = ResolveWindowWidth(HistoryWidth.Value, scale,
+                haveControls ? controlsRect.width : 0f, Screen.width, edgeMargin);
+            x = Mathf.Clamp(x, edgeMargin, Screen.width - width - edgeMargin);
             float textWidth = width - 16f * scale;
+            float lineHeight = Mathf.Max(_styleFontSize + 2f,
+                _messageStyle.CalcHeight(new GUIContent("Ag"), textWidth));
+            int maximumLines = Mathf.Clamp(CompactMaximumLines.Value, 1, 12);
             float spacing = 2f * scale;
             List<int> selected = new List<int>();
             List<float> heights = new List<float>();
             float usedHeight = 0f;
+            int usedLines = 0;
 
             for (int i = newestActive; i >= 0; i--)
             {
@@ -347,20 +353,23 @@ namespace NuclearOptionChatEnhancer
                 if (now - entry.AddedAt > visibleSeconds + fadeSeconds) break;
 
                 float height = Mathf.Max(lineHeight, _messageStyle.CalcHeight(new GUIContent(entry.Text), textWidth));
-                float remaining = maximumHeight - usedHeight - (selected.Count == 0 ? 0f : spacing);
-                if (remaining < lineHeight) break;
-                height = Mathf.Min(height, remaining);
+                int wrappedLines = Mathf.Max(1, Mathf.RoundToInt(height / lineHeight));
+                int remainingLines = maximumLines - usedLines;
+                if (remainingLines <= 0) break;
+                wrappedLines = Mathf.Min(wrappedLines, remainingLines);
+                height = Mathf.Min(height, lineHeight * wrappedLines);
                 selected.Add(i);
                 heights.Add(height);
                 usedHeight += height + (selected.Count == 1 ? 0f : spacing);
-                if (usedHeight >= maximumHeight - 0.5f) break;
+                usedLines += wrappedLines;
+                if (usedLines >= maximumLines) break;
             }
 
             if (selected.Count == 0) return;
             float padding = 7f * scale;
             float panelHeight = usedHeight + padding * 2f;
-            float bottom = Mathf.Clamp(anchor.yMax, panelHeight + 10f * scale, Screen.height - 10f * scale);
-            Rect panel = new Rect(x, bottom - panelHeight, width, panelHeight);
+            float top = 18f * scale;
+            Rect panel = new Rect(x, top, width, panelHeight);
 
             Color oldColor = GUI.color;
             GUI.color = new Color(0.025f, 0.035f, 0.045f, 0.78f);
@@ -406,32 +415,84 @@ namespace NuclearOptionChatEnhancer
 
         private Rect GetPanelRect(float scale)
         {
-            float width = Mathf.Clamp(HistoryWidth.Value, 400, 1600) * scale;
+            float width;
             float height = CurrentHistoryHeight();
             float x = 18f * scale;
-
-            Rect messageRect;
-            if (_messageText != null && TryGetGuiRect(_messageText.rectTransform, out messageRect))
-            {
-                if (messageRect.width > 100f) width = Mathf.Max(width, messageRect.width);
-                x = messageRect.xMin;
-            }
-
-            width = Mathf.Min(width, Screen.width - 20f * scale);
-            x = Mathf.Clamp(x, 10f * scale, Screen.width - width - 10f * scale);
-
             float top = 90f * scale;
+
             Rect controlsRect;
-            RectTransform chatTransform = _chatBox == null ? null : _chatBox.GetComponent<RectTransform>();
-            if (TryGetGuiRect(chatTransform, out controlsRect)
-                && controlsRect.height <= Mathf.Min(200f * scale, Screen.height * 0.25f))
+            if (TryGetChatControlsRect(scale, out controlsRect))
             {
+                x = controlsRect.xMin;
                 top = controlsRect.yMax + 6f * scale;
             }
+            else
+            {
+                controlsRect = default(Rect);
+                Rect messageRect;
+                if (_messageText != null && TryGetGuiRect(_messageText.rectTransform, out messageRect))
+                {
+                    if (messageRect.width > 100f) controlsRect.width = messageRect.width;
+                    x = messageRect.xMin;
+                }
+            }
 
+            float edgeMargin = controlsRect.width > 100f ? 0f : 10f * scale;
+            width = ResolveWindowWidth(HistoryWidth.Value, scale, controlsRect.width, Screen.width, edgeMargin);
+            x = Mathf.Clamp(x, edgeMargin, Screen.width - width - edgeMargin);
             top = Mathf.Clamp(top, 10f * scale, Screen.height - 210f * scale);
             height = Mathf.Min(height, Screen.height - top - 10f * scale);
             return new Rect(x, top, width, height);
+        }
+
+        internal static float ResolveWindowWidth(float configuredWidth, float scale, float nativeWidth,
+            float screenWidth, float edgeMargin)
+        {
+            float preferredWidth = Mathf.Clamp(configuredWidth, 400f, 1600f) * scale;
+            float usableWidth = Mathf.Max(1f, screenWidth - edgeMargin * 2f);
+            return Mathf.Min(Mathf.Max(preferredWidth, nativeWidth), usableWidth);
+        }
+
+        private bool TryGetChatControlsRect(float scale, out Rect controlsRect)
+        {
+            controlsRect = default(Rect);
+            if (_chatBox == null) return false;
+
+            var rects = new List<Rect>();
+            AddGuiRect(_chatInput == null ? null : _chatInput.GetComponent<RectTransform>(), rects);
+            Button sendButton = ChatSendButtonField == null ? null : ChatSendButtonField.GetValue(_chatBox) as Button;
+            Toggle alliesToggle = ChatAlliesToggleField == null ? null : ChatAlliesToggleField.GetValue(_chatBox) as Toggle;
+            AddGuiRect(sendButton == null ? null : sendButton.GetComponent<RectTransform>(), rects);
+            AddGuiRect(alliesToggle == null ? null : alliesToggle.GetComponent<RectTransform>(), rects);
+            if (rects.Count == 0) return false;
+
+            float minX = rects[0].xMin;
+            float maxX = rects[0].xMax;
+            float minY = rects[0].yMin;
+            float maxY = rects[0].yMax;
+            for (int i = 1; i < rects.Count; i++)
+            {
+                minX = Mathf.Min(minX, rects[i].xMin);
+                maxX = Mathf.Max(maxX, rects[i].xMax);
+                minY = Mathf.Min(minY, rects[i].yMin);
+                maxY = Mathf.Max(maxY, rects[i].yMax);
+            }
+
+            float horizontalPadding = 12f * scale;
+            float topPadding = 12f * scale;
+            float bottomPadding = 26f * scale;
+            minX = Mathf.Max(0f, minX - horizontalPadding);
+            maxX = Mathf.Min(Screen.width, maxX + horizontalPadding);
+            minY = Mathf.Max(0f, minY - topPadding);
+            maxY = Mathf.Min(Screen.height, maxY + bottomPadding);
+            controlsRect = Rect.MinMaxRect(minX, minY, maxX, maxY);
+            return controlsRect.width > 100f && controlsRect.height > 10f;
+        }
+
+        private static void AddGuiRect(RectTransform rectTransform, List<Rect> rects)
+        {
+            Rect rect;
+            if (TryGetGuiRect(rectTransform, out rect)) rects.Add(rect);
         }
 
         private static bool TryGetGuiRect(RectTransform rectTransform, out Rect guiRect)
@@ -466,16 +527,36 @@ namespace NuclearOptionChatEnhancer
         {
             if (!ExpandStatsBridgeMessages.Value) return;
             Type bridgeType = AccessTools.TypeByName("NuclearOptionStatsBridge.Plugin");
-            MethodInfo broadcast = bridgeType == null ? null : AccessTools.Method(bridgeType, "Broadcast", new[] { typeof(string) });
-            if (broadcast == null)
+            if (bridgeType == null)
             {
-                Logger.LogInfo("NuclearOptionStatsBridge was not found; its optional response expansion patch was skipped.");
+                Logger.LogInfo("Kelly's RIPPER Control Bridge was not found; its optional message expansion patch was skipped.");
                 return;
             }
 
-            MethodInfo transpiler = AccessTools.Method(typeof(Plugin), nameof(ReplaceVanillaLimit));
-            _harmony.Patch(broadcast, transpiler: new HarmonyMethod(transpiler));
-            Logger.LogInfo("NuclearOptionStatsBridge responses expanded to " + EffectiveMessageLimit + " characters per message.");
+            MethodInfo splitMessage = AccessTools.Method(bridgeType, "SplitMessage", new[] { typeof(string), typeof(int) });
+            if (splitMessage != null)
+            {
+                MethodInfo prefix = AccessTools.Method(typeof(Plugin), nameof(ExpandBridgeSplitLimit));
+                _harmony.Patch(splitMessage, prefix: new HarmonyMethod(prefix));
+                Logger.LogInfo("Kelly's RIPPER Control Bridge public, private, and Discord messages expanded to " + EffectiveMessageLimit + " characters per message.");
+                return;
+            }
+
+            MethodInfo broadcast = AccessTools.Method(bridgeType, "Broadcast", new[] { typeof(string) });
+            if (broadcast != null)
+            {
+                MethodInfo transpiler = AccessTools.Method(typeof(Plugin), nameof(ReplaceVanillaLimit));
+                _harmony.Patch(broadcast, transpiler: new HarmonyMethod(transpiler));
+                Logger.LogInfo("Legacy RIPPER broadcast messages expanded to " + EffectiveMessageLimit + " characters per message.");
+                return;
+            }
+
+            Logger.LogWarning("Kelly's RIPPER Control Bridge was found, but no compatible message-splitting method was available.");
+        }
+
+        private static void ExpandBridgeSplitLimit(ref int __1)
+        {
+            __1 = EffectiveMessageLimit;
         }
 
         private void TryPatchSarcasticKillFeed()
@@ -485,13 +566,13 @@ namespace NuclearOptionChatEnhancer
             MethodInfo broadcast = killFeedType == null ? null : AccessTools.Method(killFeedType, "Broadcast", new[] { typeof(string) });
             if (broadcast == null)
             {
-                Logger.LogInfo("SarcasticKillFeed was not found; its optional announcement expansion patch was skipped.");
+                Logger.LogInfo("Kelly's KIA was not found; its optional announcement expansion patch was skipped.");
                 return;
             }
 
             MethodInfo transpiler = AccessTools.Method(typeof(Plugin), nameof(ReplaceVanillaLimit));
             _harmony.Patch(broadcast, transpiler: new HarmonyMethod(transpiler));
-            Logger.LogInfo("SarcasticKillFeed announcements expanded to " + EffectiveMessageLimit + " characters per message.");
+            Logger.LogInfo("Kelly's KIA announcements expanded to " + EffectiveMessageLimit + " characters per message.");
         }
 
         private static IEnumerable<CodeInstruction> ReplaceVanillaLimit(IEnumerable<CodeInstruction> instructions)

@@ -14,9 +14,9 @@ internal static class HarmonySmokeTest
 
     private static int Main(string[] args)
     {
-        if (args.Length != 2)
+        if (args.Length < 2 || args.Length > 3)
         {
-            Console.Error.WriteLine("usage: HarmonySmokeTest <game-directory> <plugin-directory>");
+            Console.Error.WriteLine("usage: HarmonySmokeTest <game-directory> <plugin-directory> [ripper-bridge-dll]");
             return 2;
         }
 
@@ -49,6 +49,15 @@ internal static class HarmonySmokeTest
             Console.WriteLine("PASS target " + pair.Value + ": " + pair.Key.Name);
         }
 
+        MethodInfo resolveWindowWidth = pluginType.GetMethod("ResolveWindowWidth", BindingFlags.Static | BindingFlags.NonPublic);
+        if (resolveWindowWidth == null) throw new MissingMethodException(pluginType.FullName, "ResolveWindowWidth");
+        AssertWidth(resolveWindowWidth, 760f, 1f, 146f, 1920f, 0f, 760f,
+            "configured width wins over narrow native controls");
+        AssertWidth(resolveWindowWidth, 760f, 0.75f, 1000f, 1280f, 10f, 1000f,
+            "wider native controls are preserved");
+        AssertWidth(resolveWindowWidth, 1600f, 1.75f, 100f, 1920f, 10f, 1900f,
+            "window width is clamped to the visible screen");
+
         MethodInfo replaceLimit = pluginType.GetMethod("ReplaceVanillaLimit", BindingFlags.Static | BindingFlags.NonPublic);
         if (replaceLimit == null) throw new MissingMethodException(pluginType.FullName, "ReplaceVanillaLimit");
         string[] transpiledTargets =
@@ -73,7 +82,47 @@ internal static class HarmonySmokeTest
             Console.WriteLine("PASS IL rewrite " + name + ": " + vanillaConstants + " limit constant(s) -> 1024");
         }
 
+        if (args.Length == 3)
+        {
+            string bridgePath = Path.GetFullPath(args[2]);
+            Assembly bridgeAssembly = Assembly.LoadFrom(bridgePath);
+            Type bridgeType = bridgeAssembly.GetType("NuclearOptionStatsBridge.Plugin", true);
+            MethodInfo splitMessage = bridgeType.GetMethod("SplitMessage", BindingFlags.Static | BindingFlags.NonPublic);
+            if (splitMessage == null) throw new MissingMethodException(bridgeType.FullName, "SplitMessage");
+
+            MethodInfo prefix = pluginType.GetMethod("ExpandBridgeSplitLimit", BindingFlags.Static | BindingFlags.NonPublic);
+            if (prefix == null) throw new MissingMethodException(pluginType.FullName, "ExpandBridgeSplitLimit");
+            var harmony = new Harmony("com.kellydripper.nuclearoption.chatenhancer.smoketest");
+            try
+            {
+                harmony.Patch(splitMessage, prefix: new HarmonyMethod(prefix));
+                object iterator = splitMessage.Invoke(null, new object[] { new string('x', 300), 128 });
+                int[] capturedLimits = iterator.GetType()
+                    .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(field => field.FieldType == typeof(int) && field.Name.IndexOf("maximum", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .Select(field => (int)field.GetValue(iterator))
+                    .ToArray();
+                if (!capturedLimits.Contains(1024))
+                    throw new InvalidOperationException("RIPPER splitter did not capture the expanded 1024-character limit.");
+                Console.WriteLine("PASS RIPPER public/private message expansion: splitter captured 1024 characters");
+            }
+            finally
+            {
+                harmony.UnpatchSelf();
+            }
+        }
+
         return 0;
+    }
+
+    private static void AssertWidth(MethodInfo method, float configuredWidth, float scale, float nativeWidth,
+        float screenWidth, float edgeMargin, float expected, string description)
+    {
+        float actual = (float)method.Invoke(null,
+            new object[] { configuredWidth, scale, nativeWidth, screenWidth, edgeMargin });
+        if (Math.Abs(actual - expected) > 0.01f)
+            throw new InvalidOperationException(description + " returned " + actual + " instead of " + expected + ".");
+        Console.WriteLine("PASS layout width: " + description + " -> " + actual);
     }
 
     private static bool IsVanillaLimit(CodeInstruction instruction)
