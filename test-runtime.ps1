@@ -9,6 +9,7 @@ $bepInEx = Join-Path $GameDir "BepInEx\core"
 $pluginDir = Join-Path $root "bin\Release"
 $testDir = Join-Path $root "tests\bin"
 $testExe = Join-Path $testDir "HarmonySmokeTest.exe"
+$ripperDll = Join-Path (Split-Path $root -Parent) "NuclearOptionStatsBridge\bin\Release\KellysRipperControlBridge.dll"
 
 & (Join-Path $root "build-runtime.ps1") -GameDir $GameDir
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -26,5 +27,6 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Copy-Item -LiteralPath (Join-Path $bepInEx "BepInEx.dll") -Destination $testDir -Force
 Copy-Item -LiteralPath (Join-Path $bepInEx "0Harmony.dll") -Destination $testDir -Force
-& $testExe $GameDir $pluginDir
+if (!(Test-Path -LiteralPath $ripperDll)) { throw "Current RIPPER bridge build was not found: $ripperDll" }
+& $testExe $GameDir $pluginDir $ripperDll
 exit $LASTEXITCODE

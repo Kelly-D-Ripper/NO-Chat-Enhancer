@@ -1,5 +1,6 @@
 param(
     [string]$GameDir = $(if ($env:NUCLEAR_OPTION_DIR) { $env:NUCLEAR_OPTION_DIR } else { "C:\Program Files (x86)\Steam\steamapps\common\Nuclear Option" }),
+    [string]$BepInExCoreDir = (Join-Path (Split-Path $PSScriptRoot -Parent) "NuclearOptionStatsBridge\vendor\BepInEx-5.4.22\extracted\BepInEx\core"),
     [string]$Configuration = "Release"
 )
 
@@ -7,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $csc = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\Roslyn\csc.exe"
 $managed = Join-Path $GameDir "NuclearOption_Data\Managed"
-$bepInEx = Join-Path $GameDir "BepInEx\core"
+$bepInEx = $BepInExCoreDir
 $outDir = Join-Path $root "bin\$Configuration"
 $outDll = Join-Path $outDir "NuclearOptionChatEnhancer.dll"
 
@@ -37,7 +38,7 @@ foreach ($path in $references) {
 }
 
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-$arguments = @("/nologo", "/nostdlib+", "/target:library", "/langversion:latest", "/optimize+", "/out:$outDll")
+$arguments = @("/nologo", "/nostdlib+", "/target:library", "/langversion:latest", "/optimize+", "/deterministic+", "/out:$outDll")
 $arguments += $references | ForEach-Object { "/reference:$_" }
 $arguments += (Join-Path $root "Plugin.cs")
 
