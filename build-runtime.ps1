@@ -41,6 +41,8 @@ New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $arguments = @("/nologo", "/nostdlib+", "/target:library", "/langversion:latest", "/optimize+", "/deterministic+", "/out:$outDll")
 $arguments += $references | ForEach-Object { "/reference:$_" }
 $arguments += (Join-Path $root "Plugin.cs")
+$arguments += (Join-Path $root "CombatFeed.cs")
+$arguments += (Join-Path $root "CombatPolicy.cs")
 
 & $csc @arguments
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -49,6 +49,44 @@ internal static class HarmonySmokeTest
             Console.WriteLine("PASS target " + pair.Value + ": " + pair.Key.Name);
         }
 
+        var contextHarmony = new Harmony("com.kellydripper.nuclearoption.chatenhancer.contexttest");
+        try
+        {
+            foreach (string patchName in new[] { "NativeKillContextPatch", "NativePilotContextPatch", "NativeRepairContextPatch" })
+            {
+                Type patch = pluginType.GetNestedType(patchName, BindingFlags.NonPublic);
+                if (patch == null) throw new MissingMemberException(patchName);
+                if (contextHarmony.CreateClassProcessor(patch).Patch().Count != 1)
+                    throw new InvalidOperationException("Native context target missing: " + patchName);
+                MethodInfo finalizer = patch.GetMethod("Finalizer", BindingFlags.Static | BindingFlags.NonPublic);
+                Type infoType = pluginAssembly.GetType("NuclearOptionChatEnhancer.CombatInfo", true);
+                object saved = Activator.CreateInstance(infoType);
+                FieldInfo kind = infoType.GetField("Kind", BindingFlags.Instance | BindingFlags.NonPublic);
+                kind.SetValue(saved, Enum.Parse(kind.FieldType, "Rescue"));
+                var exception = new InvalidOperationException("Simulated original failure");
+                if (!ReferenceEquals(finalizer.Invoke(null, new[] { saved, exception }), exception))
+                    throw new InvalidOperationException("Finalizer swallowed the original exception.");
+                FieldInfo current = pluginType.GetField("_currentCombat", BindingFlags.Static | BindingFlags.NonPublic);
+                if (kind.GetValue(current.GetValue(null)).ToString() != "Rescue")
+                    throw new InvalidOperationException("Finalizer failed to restore nested context.");
+                current.SetValue(null, Activator.CreateInstance(infoType));
+                Console.WriteLine("PASS native metadata patch and exception-safe context: " + patchName);
+            }
+            if (AccessTools.Field(AccessTools.TypeByName("PersistentUnit"), "player") == null)
+                throw new MissingFieldException("PersistentUnit", "player");
+            Console.WriteLine("PASS persistent player ownership metadata");
+            foreach (string name in new[] { "GameMessagePatch", "KillFeedPatch" })
+            {
+                string expectedCall = name == "GameMessagePatch" ? "AddHistory" : "AddCombatHistory";
+                MethodInfo prefix = pluginType.GetNestedType(name, BindingFlags.NonPublic).GetMethod("Prefix", BindingFlags.Static | BindingFlags.NonPublic);
+                var calls = PatchProcessor.GetOriginalInstructions(prefix).Where(i => i.operand is MethodInfo).Select(i => ((MethodInfo)i.operand).Name).ToArray();
+                if (!calls.Contains(expectedCall) || calls.Contains(expectedCall == "AddHistory" ? "AddCombatHistory" : "AddHistory"))
+                    throw new InvalidOperationException("Incorrect channel routing: " + name);
+            }
+            Console.WriteLine("PASS native combat and chat/server capture paths remain separate");
+        }
+        finally { contextHarmony.UnpatchSelf(); }
+
         MethodInfo resolveWindowWidth = pluginType.GetMethod("ResolveWindowWidth", BindingFlags.Static | BindingFlags.NonPublic);
         if (resolveWindowWidth == null) throw new MissingMethodException(pluginType.FullName, "ResolveWindowWidth");
         AssertWidth(resolveWindowWidth, 760f, 1f, 146f, 1920f, 0f, 760f,
