@@ -21,6 +21,11 @@ $policyTest = Join-Path $testDir "CombatPolicyTests.exe"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $policyTest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$markupTest = Join-Path $testDir "MessageMarkupTests.exe"
+& $csc /nologo /target:exe /langversion:latest "/out:$markupTest" (Join-Path $root "MessageMarkup.cs") (Join-Path $root "tests\MessageMarkupTests.cs")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $markupTest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $references = @(
     (Join-Path $bepInEx "BepInEx.dll"),
     (Join-Path $bepInEx "0Harmony.dll")

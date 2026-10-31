@@ -31,6 +31,8 @@
     <Compile Include="Plugin.cs" />
     <Compile Include="CombatFeed.cs" />
     <Compile Include="CombatPolicy.cs" />
+    <Compile Include="MessageMarkup.cs" />
+    <Compile Include="TacticalUI.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

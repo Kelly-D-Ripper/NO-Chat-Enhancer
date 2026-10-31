@@ -40,6 +40,7 @@ namespace NuclearOptionChatEnhancer
         internal void AddCombatHistory(string message)
         {
             if (!EnableHistory.Value || PlayerSettings.killFeedNbLines == 0 || string.IsNullOrEmpty(message)) return;
+            message = MessageMarkup.ForImmediateMode(message);
             float now = Time.unscaledTime;
             foreach (string line in message.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
                 _combatHistory.Add(new HistoryEntry(line, now, _nextSequence++) { Combat = _currentCombat });
@@ -66,21 +67,15 @@ namespace NuclearOptionChatEnhancer
 
         private void DrawHistoryControls(Rect header, float scale)
         {
-            float buttonWidth = Mathf.Min(90f * scale, header.width / 4f);
-            var style = new GUIStyle(GUI.skin.button) { fontSize = Mathf.Max(10, _styleFontSize - 2) };
-            DrawViewButton(header, scale, buttonWidth, 0, HistoryView.Chat, "Chat", style);
-            DrawViewButton(header, scale, buttonWidth, 1, HistoryView.Kills, "Kills", style);
-            DrawViewButton(header, scale, buttonWidth, 2, HistoryView.All, "All", style);
-            if (GUI.Button(new Rect(header.xMax - buttonWidth, header.y, buttonWidth, header.height - 4f * scale), _showFilters ? "Back" : "Filters", style))
-                _showFilters = !_showFilters;
+            DrawTacticalControls(header, scale);
         }
 
         private void DrawViewButton(Rect header, float scale, float width, int position, HistoryView view, string label, GUIStyle style)
         {
-            string text = !_showFilters && _historyView == view ? label.ToUpperInvariant() : label;
-            if (!GUI.Button(new Rect(header.x + width * position, header.y, width, header.height - 4f * scale), text, style)) return;
+            if (!TacticalButton(new Rect(header.x + width * position, header.y, width - 3f * scale, header.height), label.ToUpperInvariant(), !_showFilters && !_showSettings && _historyView == view, scale)) return;
             _historyView = view;
             _showFilters = false;
+            _showSettings = false;
             _scrollToBottom = true;
         }
 
@@ -88,10 +83,22 @@ namespace NuclearOptionChatEnhancer
         {
             float row = 28f * scale;
             float width = Mathf.Max(100f, viewport.width - 24f * scale);
-            var style = new GUIStyle(GUI.skin.toggle) { fontSize = _styleFontSize, wordWrap = true };
-            float height = row * (4 + _combatKinds.Count + _combatParticipants.Count);
+            var style = _messageStyle;
+            float height = row * (7 + _combatKinds.Count + _combatParticipants.Count);
             _filterScroll = GUI.BeginScrollView(viewport, _filterScroll, new Rect(0f, 0f, width, height));
             float y = 0f;
+            GUI.Label(new Rect(0f, y, width, row), "FILTERS  /  Changes apply immediately", _headerStyle); y += row;
+            float half = (width - 6f * scale) / 2f;
+            if (TacticalButton(new Rect(0f, y, half, row - 3f * scale), "SHOW ALL", false, scale))
+            {
+                _showCombat.Value = true;
+                foreach (var setting in _combatKinds.Values) setting.Value = true;
+                foreach (var setting in _combatParticipants.Values) setting.Value = true;
+                _scrollToBottom = true;
+            }
+            if (TacticalButton(new Rect(half + 6f * scale, y, half, row - 3f * scale), "HIDE AI vs AI", false, scale))
+            { _combatParticipants[CombatParticipants.AIToAI].Value = false; _scrollToBottom = true; }
+            y += row;
             DrawFilterToggle(_showCombat, "Show native kill-feed messages", width, row, ref y, style);
             GUI.Label(new Rect(0f, y, width, row), "Unit kills: attacker -> victim", _headerStyle); y += row;
             foreach (var pair in _combatParticipants)
@@ -104,8 +111,8 @@ namespace NuclearOptionChatEnhancer
 
         private void DrawFilterToggle(ConfigEntry<bool> setting, string label, float width, float row, ref float y, GUIStyle style)
         {
-            bool value = GUI.Toggle(new Rect(2f, y, width - 4f, row), setting.Value, label, style);
-            if (value != setting.Value) { setting.Value = value; _scrollToBottom = true; }
+            Rect bounds = new Rect(2f, y, width - 4f, row - 2f);
+            if (TacticalToggle(bounds, label, setting.Value)) { setting.Value = !setting.Value; _scrollToBottom = true; }
             y += row;
         }
 

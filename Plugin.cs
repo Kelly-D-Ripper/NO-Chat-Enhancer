@@ -17,7 +17,7 @@ namespace NuclearOptionChatEnhancer
     {
         public const string PluginGuid = "com.kellydripper.nuclearoption.chatenhancer";
         public const string PluginName = "NuclearOptionChatEnhancer";
-        public const string PluginVersion = "1.2.0";
+        public const string PluginVersion = "2.0.1";
         private const int VanillaChatLimit = 128;
 
         private static readonly FieldInfo MessageTextField = AccessTools.Field(typeof(MessageUI), "messageText");
@@ -65,6 +65,7 @@ namespace NuclearOptionChatEnhancer
             internal readonly string Text;
             internal readonly float AddedAt;
             internal readonly long Sequence;
+            internal readonly string TimeLabel;
             internal CombatInfo Combat;
 
             internal HistoryEntry(string text, float addedAt, long sequence)
@@ -72,6 +73,7 @@ namespace NuclearOptionChatEnhancer
                 Text = text;
                 AddedAt = addedAt;
                 Sequence = sequence;
+                TimeLabel = DateTime.Now.ToString("HH:mm");
             }
         }
 
@@ -89,6 +91,7 @@ namespace NuclearOptionChatEnhancer
             Instance = this;
             BindConfiguration();
             BindCombatConfiguration();
+            BindDisplayConfiguration();
 
             _harmony = new Harmony(PluginGuid);
             _harmony.PatchAll(typeof(Plugin).Assembly);
@@ -178,6 +181,8 @@ namespace NuclearOptionChatEnhancer
         internal void AddHistory(string message)
         {
             if (!EnableHistory.Value || string.IsNullOrEmpty(message)) return;
+
+            message = MessageMarkup.ForImmediateMode(message);
 
             bool wasAtBottom = _lastMaximumScroll <= 1f || _scrollPosition.y >= _lastMaximumScroll - 20f;
             float addedAt = Time.unscaledTime;
@@ -288,17 +293,20 @@ namespace NuclearOptionChatEnhancer
         {
             Rect panel = GetPanelRect(scale);
             float headerHeight = 30f * scale;
+            headerHeight = 72f * scale;
             Rect header = new Rect(panel.x + 10f * scale, panel.y + 3f * scale, panel.width - 20f * scale, headerHeight);
             Rect viewport = new Rect(panel.x + 7f * scale, panel.y + headerHeight, panel.width - 14f * scale, panel.height - headerHeight - 7f * scale);
 
-            Color oldColor = GUI.color;
-            GUI.color = new Color(0.025f, 0.035f, 0.045f, 0.94f);
-            GUI.DrawTexture(panel, Texture2D.whiteTexture);
-            GUI.color = oldColor;
+            DrawPanelBackground(panel, scale);
             DrawHistoryControls(header, scale);
             if (_showFilters)
             {
                 DrawCombatFilters(viewport, scale);
+                return;
+            }
+            if (_showSettings)
+            {
+                DrawDisplaySettings(viewport, scale);
                 return;
             }
 
@@ -308,7 +316,7 @@ namespace NuclearOptionChatEnhancer
             float contentHeight = 2f * scale;
             for (int i = 0; i < entries.Count; i++)
             {
-                heights[i] = Mathf.Max(_messageStyle.lineHeight, _messageStyle.CalcHeight(new GUIContent(entries[i].Text), contentWidth));
+                heights[i] = Mathf.Max(_messageStyle.lineHeight, _messageStyle.CalcHeight(new GUIContent(DisplayText(entries[i])), contentWidth));
                 contentHeight += heights[i] + spacing;
             }
             contentHeight = Mathf.Max(contentHeight, viewport.height - 2f);
@@ -324,7 +332,8 @@ namespace NuclearOptionChatEnhancer
             float y = 1f * scale;
             for (int i = 0; i < entries.Count; i++)
             {
-                GUI.Label(new Rect(2f * scale, y, contentWidth - 4f * scale, heights[i]), entries[i].Text, _messageStyle);
+                if (i % 2 == 0) Fill(new Rect(0f, y, contentWidth, heights[i]), new Color(1f, 1f, 1f, 0.025f));
+                GUI.Label(new Rect(4f * scale, y, contentWidth - 8f * scale, heights[i]), DisplayText(entries[i]), _messageStyle);
                 y += heights[i] + spacing;
             }
             GUI.EndScrollView();
@@ -332,7 +341,7 @@ namespace NuclearOptionChatEnhancer
 
         private void DrawCompactFeed(float scale, List<HistoryEntry> entries)
         {
-            if (entries.Count == 0) return;
+            if (!_showCompact.Value || entries.Count == 0) return;
 
             float visibleSeconds = Mathf.Clamp(CompactVisibleSeconds.Value, 1f, 30f);
             float fadeSeconds = Mathf.Clamp(CompactFadeSeconds.Value, 0.1f, 5f);
@@ -382,7 +391,7 @@ namespace NuclearOptionChatEnhancer
             Rect panel = new Rect(x, 18f * scale, width, panelHeight);
 
             Color oldColor = GUI.color;
-            GUI.color = new Color(0.025f, 0.035f, 0.045f, 0.78f);
+            GUI.color = new Color(0.025f, 0.035f, 0.045f, Mathf.Clamp(_panelOpacity.Value, 0.3f, 1f) * 0.83f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
 
             float y = panel.y + padding;

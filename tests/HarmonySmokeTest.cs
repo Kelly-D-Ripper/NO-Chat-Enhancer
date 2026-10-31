@@ -84,6 +84,14 @@ internal static class HarmonySmokeTest
                     throw new InvalidOperationException("Incorrect channel routing: " + name);
             }
             Console.WriteLine("PASS native combat and chat/server capture paths remain separate");
+            foreach (string name in new[] { "AddHistory", "AddCombatHistory" })
+            {
+                MethodInfo capture = pluginType.GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic);
+                var calls = PatchProcessor.GetOriginalInstructions(capture).Where(i => i.operand is MethodInfo).Select(i => (MethodInfo)i.operand).ToArray();
+                if (!calls.Any(method => method.DeclaringType != null && method.DeclaringType.Name == "MessageMarkup" && method.Name == "ForImmediateMode"))
+                    throw new InvalidOperationException("Missing markup conversion in " + name);
+            }
+            Console.WriteLine("PASS chat and combat capture both normalize link markup");
         }
         finally { contextHarmony.UnpatchSelf(); }
 
