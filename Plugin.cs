@@ -17,7 +17,7 @@ namespace NuclearOptionChatEnhancer
     {
         public const string PluginGuid = "com.kellydripper.nuclearoption.chatenhancer";
         public const string PluginName = "NuclearOptionChatEnhancer";
-        public const string PluginVersion = "2.0.1";
+        public const string PluginVersion = "2.0.2";
         private const int VanillaChatLimit = 128;
 
         private static readonly FieldInfo MessageTextField = AccessTools.Field(typeof(MessageUI), "messageText");
@@ -59,23 +59,15 @@ namespace NuclearOptionChatEnhancer
         private GUIStyle _headerStyle;
         private GUIStyle _messageStyle;
         private int _styleFontSize;
-
-        private sealed class HistoryEntry
-        {
-            internal readonly string Text;
-            internal readonly float AddedAt;
-            internal readonly long Sequence;
-            internal readonly string TimeLabel;
-            internal CombatInfo Combat;
-
-            internal HistoryEntry(string text, float addedAt, long sequence)
-            {
-                Text = text;
-                AddedAt = addedAt;
-                Sequence = sequence;
-                TimeLabel = DateTime.Now.ToString("HH:mm");
-            }
-        }
+        private GUIContent _measureContent;
+        private IList<HistoryEntry> _layoutEntries;
+        private long _layoutRevision = -1;
+        private float _layoutWidth, _layoutScale, _layoutContentHeight;
+        private int _layoutFontSize;
+        private bool _layoutTimestamps;
+        private float[] _layoutHeights = new float[0], _layoutOffsets = new float[0];
+        private readonly int[] _compactSelected = new int[12];
+        private readonly float[] _compactHeights = new float[12];
 
         internal static int EffectiveMessageLimit
         {
@@ -137,6 +129,7 @@ namespace NuclearOptionChatEnhancer
         private void OnDestroy()
         {
             SuppressOriginalText(false);
+            UnbindCombatConfiguration();
             if (_harmony != null) _harmony.UnpatchSelf();
             if (ReferenceEquals(Instance, this)) Instance = null;
         }
@@ -154,6 +147,7 @@ namespace NuclearOptionChatEnhancer
             {
                 _history.Clear();
                 _combatHistory.Clear();
+                if (_historyCache != null) _historyCache.HistoriesCleared();
                 _scrollPosition = Vector2.zero;
                 _lastMaximumScroll = 0f;
                 _scrollToBottom = true;
@@ -192,6 +186,7 @@ namespace NuclearOptionChatEnhancer
             int maximum = Mathf.Clamp(HistoryEntries.Value, 50, 2000);
             int excess = _history.Count - maximum;
             if (excess > 0) _history.RemoveRange(0, excess);
+            if (_historyCache != null) _historyCache.ChatChanged();
             if (wasAtBottom) _scrollToBottom = true;
         }
 
@@ -281,15 +276,28 @@ namespace NuclearOptionChatEnhancer
             if (!EnableHistory.Value || Application.isBatchMode || PlayerSettings.cinematicMode) return;
             if (_messageText == null && _chatBox == null) return;
 
-            float scale = CurrentScale();
-            EnsureStyles(scale);
             if (IsChatOpen())
-                DrawHistoryPanel(scale, VisibleSelectedHistory());
-            else
-                DrawCompactFeed(scale, VisibleAllHistory());
+            {
+                float scale = CurrentScale();
+                EnsureStyles(scale);
+                DrawHistoryPanel(scale);
+            }
+            else if (_showCompact.Value)
+            {
+                float now = Time.unscaledTime;
+                float visibleSeconds = Mathf.Clamp(CompactVisibleSeconds.Value, 1f, 30f);
+                float fadeSeconds = Mathf.Clamp(CompactFadeSeconds.Value, 0.1f, 5f);
+                int maximumLines = Mathf.Clamp(CompactMaximumLines.Value, 1, 12);
+                UpdateCombatFilter();
+                IList<HistoryEntry> recent = Cache.Recent(now, visibleSeconds + fadeSeconds, maximumLines);
+                if (recent.Count == 0) return;
+                float scale = CurrentScale();
+                EnsureStyles(scale);
+                DrawCompactFeed(scale, recent, now, visibleSeconds, fadeSeconds, maximumLines);
+            }
         }
 
-        private void DrawHistoryPanel(float scale, List<HistoryEntry> entries)
+        private void DrawHistoryPanel(float scale)
         {
             Rect panel = GetPanelRect(scale);
             float headerHeight = 30f * scale;
@@ -310,16 +318,11 @@ namespace NuclearOptionChatEnhancer
                 return;
             }
 
+            IList<HistoryEntry> entries = VisibleSelectedHistory();
+
             float contentWidth = Mathf.Max(100f, viewport.width - 24f * scale);
-            float spacing = 4f * scale;
-            float[] heights = new float[entries.Count];
-            float contentHeight = 2f * scale;
-            for (int i = 0; i < entries.Count; i++)
-            {
-                heights[i] = Mathf.Max(_messageStyle.lineHeight, _messageStyle.CalcHeight(new GUIContent(DisplayText(entries[i])), contentWidth));
-                contentHeight += heights[i] + spacing;
-            }
-            contentHeight = Mathf.Max(contentHeight, viewport.height - 2f);
+            EnsureHistoryLayout(entries, contentWidth, scale);
+            float contentHeight = Mathf.Max(_layoutContentHeight, viewport.height - 2f);
             _lastMaximumScroll = Mathf.Max(0f, contentHeight - viewport.height);
             if (_scrollToBottom)
             {
@@ -329,26 +332,56 @@ namespace NuclearOptionChatEnhancer
 
             Rect content = new Rect(0f, 0f, contentWidth, contentHeight);
             _scrollPosition = GUI.BeginScrollView(viewport, _scrollPosition, content, false, true);
-            float y = 1f * scale;
-            for (int i = 0; i < entries.Count; i++)
+            int first = HistoryLayout.FirstVisible(_layoutOffsets, _layoutHeights, entries.Count, _scrollPosition.y);
+            float bottom = _scrollPosition.y + viewport.height;
+            for (int i = first; i < entries.Count && _layoutOffsets[i] <= bottom; i++)
             {
-                if (i % 2 == 0) Fill(new Rect(0f, y, contentWidth, heights[i]), new Color(1f, 1f, 1f, 0.025f));
-                GUI.Label(new Rect(4f * scale, y, contentWidth - 8f * scale, heights[i]), DisplayText(entries[i]), _messageStyle);
-                y += heights[i] + spacing;
+                float y = _layoutOffsets[i], height = _layoutHeights[i];
+                if (i % 2 == 0) Fill(new Rect(0f, y, contentWidth, height), new Color(1f, 1f, 1f, 0.025f));
+                GUI.Label(new Rect(4f * scale, y, contentWidth - 8f * scale, height), DisplayText(entries[i]), _messageStyle);
             }
             GUI.EndScrollView();
         }
 
-        private void DrawCompactFeed(float scale, List<HistoryEntry> entries)
+        private void EnsureHistoryLayout(IList<HistoryEntry> entries, float width, float scale)
         {
-            if (!_showCompact.Value || entries.Count == 0) return;
+            bool timestamps = _showTimestamps.Value;
+            if (ReferenceEquals(_layoutEntries, entries) && _layoutRevision == Cache.Revision
+                && _layoutWidth == width && _layoutScale == scale && _layoutFontSize == _styleFontSize
+                && _layoutTimestamps == timestamps) return;
 
-            float visibleSeconds = Mathf.Clamp(CompactVisibleSeconds.Value, 1f, 30f);
-            float fadeSeconds = Mathf.Clamp(CompactFadeSeconds.Value, 0.1f, 5f);
-            float now = Time.unscaledTime;
+            if (_layoutHeights.Length < entries.Count)
+            {
+                int capacity = Mathf.Max(entries.Count, Mathf.Max(16, _layoutHeights.Length * 2));
+                Array.Resize(ref _layoutHeights, capacity);
+                Array.Resize(ref _layoutOffsets, capacity);
+            }
+            float y = 1f * scale, spacing = 4f * scale;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                _layoutOffsets[i] = y;
+                _layoutHeights[i] = Mathf.Max(_messageStyle.lineHeight, MeasureText(DisplayText(entries[i]), width));
+                y += _layoutHeights[i] + spacing;
+            }
+            _layoutContentHeight = y + 1f * scale;
+            _layoutEntries = entries;
+            _layoutRevision = Cache.Revision;
+            _layoutWidth = width;
+            _layoutScale = scale;
+            _layoutFontSize = _styleFontSize;
+            _layoutTimestamps = timestamps;
+        }
+
+        private float MeasureText(string text, float width)
+        {
+            if (_measureContent == null) _measureContent = new GUIContent();
+            _measureContent.text = text;
+            return _messageStyle.CalcHeight(_measureContent, width);
+        }
+
+        private void DrawCompactFeed(float scale, IList<HistoryEntry> entries, float now, float visibleSeconds, float fadeSeconds, int maximumLines)
+        {
             int newestActive = entries.Count - 1;
-            while (newestActive >= 0 && now - entries[newestActive].AddedAt > visibleSeconds + fadeSeconds) newestActive--;
-            if (newestActive < 0) return;
 
             Rect controlsRect;
             bool haveControls = TryGetChatControlsRect(scale, out controlsRect);
@@ -359,11 +392,9 @@ namespace NuclearOptionChatEnhancer
             x = Mathf.Clamp(x, edgeMargin, Screen.width - width - edgeMargin);
             float textWidth = width - 16f * scale;
             float lineHeight = Mathf.Max(_styleFontSize + 2f,
-                _messageStyle.CalcHeight(new GUIContent("Ag"), textWidth));
-            int maximumLines = Mathf.Clamp(CompactMaximumLines.Value, 1, 12);
+                MeasureText("Ag", textWidth));
             float spacing = 2f * scale;
-            List<int> selected = new List<int>();
-            List<float> heights = new List<float>();
+            int selectedCount = 0;
             float usedHeight = 0f;
             int usedLines = 0;
 
@@ -372,20 +403,20 @@ namespace NuclearOptionChatEnhancer
                 HistoryEntry entry = entries[i];
                 if (now - entry.AddedAt > visibleSeconds + fadeSeconds) break;
 
-                float height = Mathf.Max(lineHeight, _messageStyle.CalcHeight(new GUIContent(entry.Text), textWidth));
+                float height = Mathf.Max(lineHeight, MeasureText(entry.Text, textWidth));
                 int wrappedLines = Mathf.Max(1, Mathf.RoundToInt(height / lineHeight));
                 int remainingLines = maximumLines - usedLines;
                 if (remainingLines <= 0) break;
                 wrappedLines = Mathf.Min(wrappedLines, remainingLines);
                 height = Mathf.Min(height, lineHeight * wrappedLines);
-                selected.Add(i);
-                heights.Add(height);
-                usedHeight += height + (selected.Count == 1 ? 0f : spacing);
+                _compactSelected[selectedCount] = i;
+                _compactHeights[selectedCount++] = height;
+                usedHeight += height + (selectedCount == 1 ? 0f : spacing);
                 usedLines += wrappedLines;
                 if (usedLines >= maximumLines) break;
             }
 
-            if (selected.Count == 0) return;
+            if (selectedCount == 0) return;
             float padding = 7f * scale;
             float panelHeight = usedHeight + padding * 2f;
             Rect panel = new Rect(x, 18f * scale, width, panelHeight);
@@ -395,13 +426,13 @@ namespace NuclearOptionChatEnhancer
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
 
             float y = panel.y + padding;
-            for (int position = selected.Count - 1; position >= 0; position--)
+            for (int position = selectedCount - 1; position >= 0; position--)
             {
-                HistoryEntry entry = entries[selected[position]];
+                HistoryEntry entry = entries[_compactSelected[position]];
                 float age = now - entry.AddedAt;
                 float alpha = age <= visibleSeconds ? 1f : Mathf.Clamp01(1f - ((age - visibleSeconds) / fadeSeconds));
                 GUI.color = new Color(1f, 1f, 1f, alpha);
-                float height = heights[position];
+                float height = _compactHeights[position];
                 GUI.BeginGroup(new Rect(panel.x + padding, y, textWidth, height));
                 GUI.Label(new Rect(0f, 0f, textWidth, height), entry.Text, _messageStyle);
                 GUI.EndGroup();

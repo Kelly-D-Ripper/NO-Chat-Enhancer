@@ -92,6 +92,15 @@ internal static class HarmonySmokeTest
                     throw new InvalidOperationException("Missing markup conversion in " + name);
             }
             Console.WriteLine("PASS chat and combat capture both normalize link markup");
+            foreach (var check in new[] { new[] { "AddHistory", "ChatChanged" }, new[] { "AddCombatHistory", "CombatChanged" },
+                new[] { "BindCombatConfiguration", "add_SettingChanged" }, new[] { "UnbindCombatConfiguration", "remove_SettingChanged" },
+                new[] { "UpdateCombatFilter", "SetFilter" } })
+            {
+                MethodInfo method = pluginType.GetMethod(check[0], BindingFlags.Instance | BindingFlags.NonPublic);
+                var calls = PatchProcessor.GetOriginalInstructions(method).Where(i => i.operand is MethodInfo).Select(i => ((MethodInfo)i.operand).Name).ToArray();
+                if (!calls.Contains(check[1])) throw new InvalidOperationException("History cache integration missing " + check[1] + " in " + check[0]);
+            }
+            Console.WriteLine("PASS history cache invalidation and filter-change integration");
         }
         finally { contextHarmony.UnpatchSelf(); }
 

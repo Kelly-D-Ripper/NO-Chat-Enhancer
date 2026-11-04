@@ -12,29 +12,54 @@ namespace NuclearOptionChatEnhancer
         private readonly Dictionary<CombatKind, ConfigEntry<bool>> _combatKinds = new Dictionary<CombatKind, ConfigEntry<bool>>();
         private readonly Dictionary<CombatParticipants, ConfigEntry<bool>> _combatParticipants = new Dictionary<CombatParticipants, ConfigEntry<bool>>();
         private readonly List<HistoryEntry> _combatHistory = new List<HistoryEntry>();
+        private HistoryCache _historyCache;
+        private volatile bool _filtersDirty = true;
         private long _nextSequence;
         private bool _showFilters;
         private HistoryView _historyView = HistoryView.All;
         private Vector2 _filterScroll;
         [ThreadStatic] private static CombatInfo _currentCombat;
 
+        private HistoryCache Cache
+        {
+            get { return _historyCache ?? (_historyCache = new HistoryCache(_history, _combatHistory)); }
+        }
+
         private void BindCombatConfiguration()
         {
             _showCombat = Config.Bind("KillFeed", "Enabled", true, "Display native combat messages in the combined feed and kill history.");
+            _showCombat.SettingChanged += OnCombatFilterChanged;
             foreach (CombatKind kind in Enum.GetValues(typeof(CombatKind)))
+            {
                 _combatKinds[kind] = Config.Bind("CombatTypes", "Show" + kind, true,
                     "Display native " + kind + " messages. Existing game visibility filters still apply.");
+                _combatKinds[kind].SettingChanged += OnCombatFilterChanged;
+            }
             foreach (CombatParticipants category in Enum.GetValues(typeof(CombatParticipants)))
+            {
                 _combatParticipants[category] = Config.Bind("CombatParticipants", "Show" + category, true,
                     "Display " + category + " unit kills. Unknown includes missing attackers/environmental losses. Does not filter interceptions, repairs or pilot events.");
+                _combatParticipants[category].SettingChanged += OnCombatFilterChanged;
+            }
         }
 
-        private List<HistoryEntry> VisibleCombatHistory()
+        private void UnbindCombatConfiguration()
         {
+            if (_showCombat != null) _showCombat.SettingChanged -= OnCombatFilterChanged;
+            foreach (var setting in _combatKinds.Values) setting.SettingChanged -= OnCombatFilterChanged;
+            foreach (var setting in _combatParticipants.Values) setting.SettingChanged -= OnCombatFilterChanged;
+        }
+
+        private void OnCombatFilterChanged(object sender, EventArgs args) { _filtersDirty = true; }
+
+        private void UpdateCombatFilter()
+        {
+            if (!_filtersDirty) return;
+            _filtersDirty = false;
             int kinds = 0, participants = 0;
             foreach (var pair in _combatKinds) if (pair.Value.Value) kinds |= 1 << (int)pair.Key;
             foreach (var pair in _combatParticipants) if (pair.Value.Value) participants |= 1 << (int)pair.Key;
-            return _combatHistory.FindAll(entry => CombatPolicy.Allows(entry.Combat, _showCombat.Value, kinds, participants));
+            Cache.SetFilter(_showCombat.Value, kinds, participants);
         }
 
         internal void AddCombatHistory(string message)
@@ -46,23 +71,17 @@ namespace NuclearOptionChatEnhancer
                 _combatHistory.Add(new HistoryEntry(line, now, _nextSequence++) { Combat = _currentCombat });
             int excess = _combatHistory.Count - Mathf.Clamp(HistoryEntries.Value, 50, 2000);
             if (excess > 0) _combatHistory.RemoveRange(0, excess);
+            if (_historyCache != null) _historyCache.CombatChanged();
             if (_lastMaximumScroll <= 1f || _scrollPosition.y >= _lastMaximumScroll - 20f) _scrollToBottom = true;
         }
 
-        private List<HistoryEntry> VisibleAllHistory()
+        private IList<HistoryEntry> VisibleSelectedHistory()
         {
-            var entries = new List<HistoryEntry>(_history);
-            entries.AddRange(VisibleCombatHistory());
-            entries.Sort((a, b) => a.Sequence.CompareTo(b.Sequence));
-            return entries;
-        }
-
-        private List<HistoryEntry> VisibleSelectedHistory()
-        {
+            UpdateCombatFilter();
             bool chat = CombatPolicy.IncludesChat(_historyView);
             bool kills = CombatPolicy.IncludesKills(_historyView);
-            if (chat && kills) return VisibleAllHistory();
-            return chat ? _history : VisibleCombatHistory();
+            if (chat && kills) return Cache.All();
+            return chat ? (IList<HistoryEntry>)_history : Cache.Combat();
         }
 
         private void DrawHistoryControls(Rect header, float scale)

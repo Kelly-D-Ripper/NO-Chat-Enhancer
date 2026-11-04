@@ -21,6 +21,6 @@ Open chat and use **Filters** or **Display** to make it yours. The game's own ki
 
 ## A note about long messages
 
-Long player messages are enabled by default. The server and every participating client need compatible Chat Enhancer long-message support and the same `MaximumLength`. Versions 1.1.5, 1.2.0 and 2.0.1 use the same protocol.
+Long player messages are enabled by default. The server and every participating client need compatible Chat Enhancer long-message support and the same `MaximumLength`. Versions 1.1.5, 1.2.0, 2.0.1 and 2.0.2 use the same protocol.
 
 Playing on an unmodded server? Set `EnablePlayerMessages = false` in `BepInEx/config/com.kellydripper.nuclearoption.chatenhancer.cfg` after your first launch. The chat UI and history will still work, with the normal message limit.

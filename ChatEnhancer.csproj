@@ -31,6 +31,7 @@
     <Compile Include="Plugin.cs" />
     <Compile Include="CombatFeed.cs" />
     <Compile Include="CombatPolicy.cs" />
+    <Compile Include="HistoryCache.cs" />
     <Compile Include="MessageMarkup.cs" />
     <Compile Include="TacticalUI.cs" />
   </ItemGroup>

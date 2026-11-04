@@ -43,6 +43,7 @@ $arguments += $references | ForEach-Object { "/reference:$_" }
 $arguments += (Join-Path $root "Plugin.cs")
 $arguments += (Join-Path $root "CombatFeed.cs")
 $arguments += (Join-Path $root "CombatPolicy.cs")
+$arguments += (Join-Path $root "HistoryCache.cs")
 $arguments += (Join-Path $root "MessageMarkup.cs")
 $arguments += (Join-Path $root "TacticalUI.cs")
 

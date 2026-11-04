@@ -1,7 +1,7 @@
 param(
     [string]$GameDir = $(if ($env:NUCLEAR_OPTION_DIR) { $env:NUCLEAR_OPTION_DIR } else { "C:\Program Files (x86)\Steam\steamapps\common\Nuclear Option" }),
     [string]$Configuration = "Release",
-    [string]$Version = "2.0.1",
+    [string]$Version = "2.0.2",
     [string]$OutputDirectory = $PSScriptRoot
 )
 

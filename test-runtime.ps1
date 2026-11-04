@@ -21,6 +21,11 @@ $policyTest = Join-Path $testDir "CombatPolicyTests.exe"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $policyTest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$historyTest = Join-Path $testDir "HistoryCacheTests.exe"
+& $csc /nologo /target:exe /langversion:latest "/out:$historyTest" (Join-Path $root "CombatPolicy.cs") (Join-Path $root "HistoryCache.cs") (Join-Path $root "tests\HistoryCacheTests.cs")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $historyTest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $markupTest = Join-Path $testDir "MessageMarkupTests.exe"
 & $csc /nologo /target:exe /langversion:latest "/out:$markupTest" (Join-Path $root "MessageMarkup.cs") (Join-Path $root "tests\MessageMarkupTests.cs")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
